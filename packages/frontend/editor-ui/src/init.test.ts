@@ -148,7 +148,7 @@ describe('Init', () => {
 			await initializeCore();
 
 			expect(uiStore.initialize).toHaveBeenCalledWith({
-				banners: ['NON_PRODUCTION_LICENSE', 'V1'],
+				banners: ['V1'],
 			});
 		});
 	});

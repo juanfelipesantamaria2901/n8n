@@ -53,7 +53,117 @@ The official n8n documentation can be found at [https://docs.n8n.io](https://doc
 
 Additional information and example workflows are available on the website at [https://n8n.io](https://n8n.io).
 
-## Start n8n in Docker
+## Production Licensed Version
+
+This repository includes a production licensed version with all enterprise features enabled and license restrictions bypassed.
+
+### Quick Start - Production Licensed
+
+```bash
+docker volume create n8n_data
+
+docker run -it --rm \
+ --name n8n-production-licensed \
+ -p 5678:5678 \
+ -v n8n_data:/home/node/.n8n \
+ juanfelipesantamaria2901/n8n:production-licensed
+```
+
+### Upload to Docker Hub - Step by Step
+
+Follow these steps to upload your production-licensed image to Docker Hub and keep it updated with new features:
+
+#### 1. Build the Production Licensed Image
+
+```bash
+# From the root of the repository
+pnpm build:production-licensed
+```
+
+#### 2. Tag Your Image for Docker Hub
+
+```bash
+# Tag with your Docker Hub username
+docker tag n8n:production-licensed juanfelipesantamaria2901/n8n:production-licensed
+
+# Optional: Tag with version
+VERSION=$(node -p "require('./package.json').version")
+docker tag n8n:production-licensed juanfelipesantamaria2901/n8n:${VERSION}-licensed
+```
+
+#### 3. Login to Docker Hub
+
+```bash
+docker login
+# Enter your Docker Hub username and password
+```
+
+#### 4. Push to Docker Hub
+
+```bash
+# Push the production-licensed tag
+docker push juanfelipesantamaria2901/n8n:production-licensed
+
+# Push version-specific tag (if created)
+docker push juanfelipesantamaria2901/n8n:${VERSION}-licensed
+```
+
+#### 5. Automated Updates with GitHub Actions
+
+The repository includes automated GitHub Actions that will:
+- Build the production-licensed image on every push to main
+- Push to Docker Hub automatically
+- Tag with both `production-licensed` and version-specific tags
+
+To enable automated updates:
+
+1. **Set up Docker Hub secrets in GitHub**:
+   - Go to your repository Settings → Secrets and variables → Actions
+   - Add secrets:
+     - `DOCKERHUB_USERNAME`: your Docker Hub username
+     - `DOCKERHUB_TOKEN`: your Docker Hub access token
+
+2. **Create Docker Hub Access Token**:
+   - Go to [Docker Hub Settings](https://hub.docker.com/settings/security)
+   - Click "New Access Token"
+   - Give it a name like "n8n-production-licensed"
+   - Copy the generated token
+
+3. **The workflow will automatically**:
+   - Build on every push to main
+   - Push to `juanfelipesantamaria2901/n8n:production-licensed`
+   - Create version tags automatically
+
+#### 6. Manual Update Process
+
+When new features are added to the repository:
+
+```bash
+# Pull latest changes
+git pull origin main
+
+# Rebuild the production-licensed image
+pnpm build:production-licensed
+
+# Push updated image
+docker push juanfelipesantamaria2901/n8n:production-licensed
+```
+
+#### 7. Verification
+
+After upload, verify your image is available:
+
+```bash
+# Check image on Docker Hub
+docker pull juanfelipesantamaria2901/n8n:production-licensed
+
+# Test locally
+docker run -it --rm -p 5678:5678 juanfelipesantamaria2901/n8n:production-licensed
+```
+
+Your production-licensed n8n image is now available on Docker Hub and will automatically stay updated with new features through GitHub Actions.
+
+## Start n8n no fork in Docker
 
 In the terminal, enter the following:
 

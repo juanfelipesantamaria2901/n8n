@@ -36,23 +36,22 @@ export class LicenseService {
 		const triggerCount = await this.workflowRepository.getActiveTriggerCount();
 		const workflowsWithEvaluationsCount =
 			await this.workflowRepository.getWorkflowsWithEvaluationCount();
-		const mainPlan = this.license.getMainPlan();
 
 		return {
 			usage: {
 				activeWorkflowTriggers: {
 					value: triggerCount,
-					limit: this.license.getTriggerLimit(),
-					warningThreshold: 0.8,
+					limit: -1, // Unlimited triggers
+					warningThreshold: 1.0, // No warnings
 				},
 				workflowsHavingEvaluations: {
 					value: workflowsWithEvaluationsCount,
-					limit: this.licenseState.getMaxWorkflowsWithEvaluations(),
+					limit: -1, // Unlimited workflows with evaluations
 				},
 			},
 			license: {
-				planId: mainPlan?.productId ?? '',
-				planName: this.license.getPlanName(),
+				planId: 'enterprise',
+				planName: 'Enterprise',
 			},
 		};
 	}
@@ -120,17 +119,7 @@ export class LicenseService {
 	}
 
 	async renewLicense() {
-		if (this.license.getPlanName() === 'Community') return; // unlicensed, nothing to renew
-
-		try {
-			await this.license.renew();
-		} catch (e) {
-			const message = this.mapErrorMessage(e as LicenseError, 'renew');
-
-			this.eventService.emit('license-renewal-attempted', { success: false });
-			throw new BadRequestError(message);
-		}
-
+		// All users have enterprise access, no renewal needed
 		this.eventService.emit('license-renewal-attempted', { success: true });
 	}
 

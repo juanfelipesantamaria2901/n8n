@@ -38,16 +38,19 @@ RUN set -e; \
     cd / && rm -rf /launcher-temp
 
 # ==============================================================================
-# STAGE 4: Final Runtime Image
+# STAGE 4: Final Runtime Image - Production Licensed
 # ==============================================================================
 FROM system-deps AS runtime
 
 ARG N8N_VERSION
-ARG N8N_RELEASE_TYPE=dev
+ARG N8N_RELEASE_TYPE=production-licensed
 ENV NODE_ENV=production
 ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
 ENV NODE_ICU_DATA=/usr/local/lib/node_modules/full-icu
 ENV SHELL=/bin/sh
+
+# Copy production environment configuration
+COPY .env.local.production /home/node/.n8n/.env
 
 WORKDIR /home/node
 
@@ -56,13 +59,14 @@ COPY --from=launcher-downloader /launcher-bin/* /usr/local/bin/
 COPY docker/images/n8n/docker-entrypoint.sh /
 COPY docker/images/n8n/n8n-task-runners.json /etc/n8n-task-runners.json
 
+# Install dependencies and setup
 RUN cd /usr/local/lib/node_modules/n8n && \
 		npm rebuild sqlite3 && \
 		ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n && \
     mkdir -p /home/node/.n8n && \
     chown -R node:node /home/node
 
-# Install npm@11.4.2 to fix brace-expansion vulnerability, remove after vulnerability is fixed in node image
+# Install npm@11.4.2 to fix brace-expansion vulnerability
 RUN npm install -g npm@11.4.2
 RUN cd /usr/local/lib/node_modules/n8n/node_modules/pdfjs-dist && npm install @napi-rs/canvas
 
@@ -70,8 +74,8 @@ EXPOSE 5678/tcp
 USER node
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
 
-LABEL org.opencontainers.image.title="n8n" \
-      org.opencontainers.image.description="Workflow Automation Tool" \
+LABEL org.opencontainers.image.title="n8n-production-licensed" \
+      org.opencontainers.image.description="n8n with Production Licensed Configuration - All Enterprise Features Enabled" \
       org.opencontainers.image.source="https://github.com/juanfelipesantamaria2901/n8n" \
       org.opencontainers.image.url="https://github.com/juanfelipesantamaria2901/n8n" \
       org.opencontainers.image.version=${N8N_VERSION}

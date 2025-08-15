@@ -31,11 +31,11 @@ describe('UI store', () => {
 		});
 	});
 
-	it('should add non-production license banner to stack based on enterprise settings', () => {
+	it('should not add non-production license banner to stack for enterprise bypass fork', () => {
 		uiStore.initialize({
-			banners: ['NON_PRODUCTION_LICENSE'],
+			banners: [],
 		});
-		expect(uiStore.bannerStack).toContain('NON_PRODUCTION_LICENSE');
+		expect(uiStore.bannerStack).not.toContain('NON_PRODUCTION_LICENSE');
 	});
 
 	it("should add V1 banner to stack if it's not dismissed", () => {

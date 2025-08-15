@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  n8n-production-licensed:
+    build:
+      context: .
+      dockerfile: docker/images/n8n/Dockerfile.production-licensed
+    image: juanfelipesantamaria2901/n8n:production-licensed
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - NODE_ENV=production
+      - N8N_RELEASE_TYPE=production-licensed
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_LICENSE_TENANT_ID=production-tenant
+      - N8N_LICENSE_AUTO_RENEW_ENABLED=false
+      - N8N_LICENSE_SERVER_URL=
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+      - EXECUTIONS_PROCESS=main
+      - EXECUTIONS_TIMEOUT=-1
+      - EXECUTIONS_TIMEOUT_MAX=-1
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - N8N_PERSISTED_BINARY_DATA_TTL=1440
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - n8n_network
+
+  # Optional: Add PostgreSQL for production use
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=n8n_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - n8n_network
+    ports:
+      - "5432:5432"
+
+  # Optional: Add Redis for queue mode
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - n8n_network
+    ports:
+      - "6379:6379"
+
+volumes:
+  n8n_data:
+  postgres_data:
+  redis_data:
+
+networks:
+  n8n_network:
+    driver: bridge
