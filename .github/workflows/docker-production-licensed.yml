@@ -44,6 +44,20 @@ jobs:
     - name: Build n8n application
       run: pnpm build:n8n
 
+    - name: Create .env.local.production file
+      run: |
+        cat > .env.local.production << 'EOF'
+        # Production environment configuration for n8n
+        NODE_ENV=production
+        N8N_LOG_LEVEL=info
+        N8N_DIAGNOSTICS_ENABLED=true
+        N8N_PERSONALIZATION_ENABLED=true
+        N8N_VERSION_NOTIFICATIONS_ENABLED=true
+        N8N_TEMPLATES_ENABLED=true
+        N8N_COMMUNITY_PACKAGES_ENABLED=true
+        N8N_HIDE_USAGE_PAGE=false
+        EOF
+
     - name: Log in to Docker Hub
       if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
