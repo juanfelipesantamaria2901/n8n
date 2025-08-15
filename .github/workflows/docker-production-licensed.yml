@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: juanfelipesantamaria2901/n8n
+  IMAGE_NAME: soakingend38/n8n
   USERNAME: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKER_USERNAME }}
   PASSWORD: ${{ secrets.DOCKERHUB_TOKEN || secrets.DOCKER_PASSWORD }}
 
@@ -97,8 +97,8 @@ jobs:
         file: ./docker/images/n8n/Dockerfile.production-licensed
         push: true
         tags: |
-          juanfelipesantamaria2901/n8n:production-licensed-latest
-          juanfelipesantamaria2901/n8n:latest
+          soakingend38/n8n:production-licensed-latest
+          soakingend38/n8n:latest
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
