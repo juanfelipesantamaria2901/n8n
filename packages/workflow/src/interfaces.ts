@@ -13,6 +13,10 @@ import type { SecureContextOptions } from 'tls';
 import type { URLSearchParams } from 'url';
 
 import type { CODE_EXECUTION_MODES, CODE_LANGUAGES, LOG_LEVELS } from './constants';
+import type {
+	IDataStoreProjectAggregateService,
+	IDataStoreProjectService,
+} from './data-store.types';
 import type { IDeferredPromise } from './deferred-promise';
 import type { ExecutionCancelledError } from './errors';
 import type { ExpressionError } from './errors/expression.error';
@@ -916,6 +920,26 @@ type FunctionsBaseWithRequiredKeys<Keys extends keyof FunctionsBase> = Functions
 
 export type ContextType = 'flow' | 'node';
 
+export type DataStoreProxyProvider = {
+	getDataStoreAggregateProxy(
+		workflow: Workflow,
+		node: INode,
+		dataStoreProjectId?: string,
+	): Promise<IDataStoreProjectAggregateService>;
+	getDataStoreProxy(
+		workflow: Workflow,
+		node: INode,
+		dataStoreId: string,
+		dataStoreProjectId?: string,
+	): Promise<IDataStoreProjectService>;
+};
+
+export type DataStoreProxyFunctions = {
+	// These are optional to account for situations where the data-store module is disabled
+	getDataStoreAggregateProxy?(): Promise<IDataStoreProjectAggregateService>;
+	getDataStoreProxy?(dataStoreId: string): Promise<IDataStoreProjectService>;
+};
+
 type BaseExecutionFunctions = FunctionsBaseWithRequiredKeys<'getMode'> & {
 	continueOnFail(): boolean;
 	setMetadata(metadata: ITaskMetadata): void;
@@ -978,7 +1002,8 @@ export type IExecuteFunctions = ExecuteFunctions.GetNodeParameterFn &
 			BinaryHelperFunctions &
 			DeduplicationHelperFunctions &
 			FileSystemHelperFunctions &
-			SSHTunnelFunctions & {
+			SSHTunnelFunctions &
+			DataStoreProxyFunctions & {
 				normalizeItems(items: INodeExecutionData | INodeExecutionData[]): INodeExecutionData[];
 				constructExecutionMetaData(
 					inputData: INodeExecutionData[],
@@ -1062,7 +1087,7 @@ export interface ILoadOptionsFunctions extends FunctionsBase {
 	): NodeParameterValueType | object | undefined;
 	getCurrentNodeParameters(): INodeParameters | undefined;
 
-	helpers: RequestHelperFunctions & SSHTunnelFunctions;
+	helpers: RequestHelperFunctions & SSHTunnelFunctions & DataStoreProxyFunctions;
 }
 
 export type FieldValueOption = { name: string; type: FieldType | 'any' };
@@ -1410,6 +1435,7 @@ export interface ResourceMapperTypeOptionsBase {
 	noFieldsError?: string;
 	multiKeyMatch?: boolean;
 	supportAutoMap?: boolean;
+	hideNoDataError?: boolean; // Hide "No data found" error when no fields are available
 	matchingFieldsLabels?: {
 		title?: string;
 		description?: string;
@@ -2579,6 +2605,7 @@ export interface IWorkflowSettings {
 	executionTimeout?: number;
 	executionOrder?: 'v0' | 'v1';
 	timeSavedPerExecution?: number;
+	availableInMCP?: boolean;
 }
 
 export interface WorkflowFEMeta {
@@ -2731,7 +2758,7 @@ export interface INodeGraphItem {
 	runs?: number;
 	items_total?: number;
 	metric_names?: string[];
-	language?: string; // only for Code node: 'javascript' or 'python'
+	language?: string; // only for Code node: 'javascript' or 'python' or 'pythonNative'
 }
 
 export interface INodeNameIndex {

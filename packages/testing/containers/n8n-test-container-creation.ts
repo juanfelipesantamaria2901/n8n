@@ -22,6 +22,7 @@ import {
 	setupRedis,
 	setupCaddyLoadBalancer,
 	pollContainerHttpEndpoint,
+	setupProxyServer,
 } from './n8n-test-container-dependencies';
 import { createSilentLogConsumer } from './n8n-test-container-utils';
 
@@ -31,6 +32,7 @@ const POSTGRES_IMAGE = 'postgres:16-alpine';
 const REDIS_IMAGE = 'redis:7-alpine';
 const CADDY_IMAGE = 'caddy:2-alpine';
 const N8N_E2E_IMAGE = 'n8nio/n8n:local';
+const MOCKSERVER_IMAGE = 'mockserver/mockserver:5.15.0';
 
 // Default n8n image (can be overridden via N8N_DOCKER_IMAGE env var)
 const N8N_IMAGE = process.env.N8N_DOCKER_IMAGE ?? N8N_E2E_IMAGE;
@@ -42,16 +44,24 @@ const BASE_ENV: Record<string, string> = {
 	E2E_TESTS: 'false',
 	QUEUE_HEALTH_CHECK_ACTIVE: 'true',
 	N8N_DIAGNOSTICS_ENABLED: 'false',
+	N8N_METRICS: 'true',
 	N8N_RUNNERS_ENABLED: 'true',
 	NODE_ENV: 'development', // If this is set to test, the n8n container will not start, insights module is not found??
 	N8N_LICENSE_TENANT_ID: process.env.N8N_LICENSE_TENANT_ID ?? '1001',
 	N8N_LICENSE_ACTIVATION_KEY: process.env.N8N_LICENSE_ACTIVATION_KEY ?? '',
 };
 
-// Wait strategy for n8n containers
-const N8N_WAIT_STRATEGY = Wait.forAll([
+// Wait strategy for n8n main containers
+const N8N_MAIN_WAIT_STRATEGY = Wait.forAll([
 	Wait.forListeningPorts(),
-	Wait.forHttp('/healthz/readiness', 5678).forStatusCode(200).withStartupTimeout(90000),
+	Wait.forHttp('/healthz/readiness', 5678).forStatusCode(200).withStartupTimeout(30000),
+	Wait.forLogMessage('Editor is now accessible via').withStartupTimeout(30000),
+]);
+
+// Wait strategy for n8n worker containers
+const N8N_WORKER_WAIT_STRATEGY = Wait.forAll([
+	Wait.forListeningPorts(),
+	Wait.forLogMessage('n8n worker is now ready').withStartupTimeout(30000),
 ]);
 
 // --- Interfaces ---
@@ -66,6 +76,11 @@ export interface N8NConfig {
 		  };
 	env?: Record<string, string>;
 	projectName?: string;
+	resourceQuota?: {
+		memory?: number; // in GB
+		cpu?: number; // in cores
+	};
+	proxyServerEnabled?: boolean;
 }
 
 export interface N8NStack {
@@ -97,7 +112,14 @@ export interface N8NStack {
  * });
  */
 export async function createN8NStack(config: N8NConfig = {}): Promise<N8NStack> {
-	const { postgres = false, queueMode = false, env = {}, projectName } = config;
+	const {
+		postgres = false,
+		queueMode = false,
+		env = {},
+		proxyServerEnabled = false,
+		projectName,
+		resourceQuota,
+	} = config;
 	const queueConfig = normalizeQueueConfig(queueMode);
 	const usePostgres = postgres || !!queueConfig;
 	const uniqueProjectName = projectName ?? `n8n-stack-${Math.random().toString(36).substring(7)}`;
@@ -105,7 +127,7 @@ export async function createN8NStack(config: N8NConfig = {}): Promise<N8NStack> 
 
 	const mainCount = queueConfig?.mains ?? 1;
 	const needsLoadBalancer = mainCount > 1;
-	const needsNetwork = usePostgres || !!queueConfig || needsLoadBalancer;
+	const needsNetwork = usePostgres || !!queueConfig || needsLoadBalancer || proxyServerEnabled;
 
 	let network: StartedNetwork | undefined;
 	if (needsNetwork) {
@@ -170,6 +192,31 @@ export async function createN8NStack(config: N8NConfig = {}): Promise<N8NStack> 
 		}
 	}
 
+	if (proxyServerEnabled) {
+		assert(network, 'Network should be created for ProxyServer');
+		const hostname = 'proxyserver';
+		const port = 1080;
+		const url = `http://${hostname}:${port}`;
+		const proxyServerContainer: StartedTestContainer = await setupProxyServer({
+			proxyServerImage: MOCKSERVER_IMAGE,
+			projectName: uniqueProjectName,
+			network,
+			hostname,
+			port,
+		});
+
+		containers.push(proxyServerContainer);
+
+		environment = {
+			...environment,
+			// Configure n8n to proxy all HTTP requests through ProxyServer
+			HTTP_PROXY: url,
+			HTTPS_PROXY: url,
+			// Ensure https requests can be proxied without SSL issues
+			...(proxyServerEnabled ? { NODE_TLS_REJECT_UNAUTHORIZED: '0' } : {}),
+		};
+	}
+
 	let baseUrl: string;
 
 	if (needsLoadBalancer) {
@@ -195,6 +242,7 @@ export async function createN8NStack(config: N8NConfig = {}): Promise<N8NStack> 
 			uniqueProjectName,
 			environment,
 			network,
+			resourceQuota,
 		});
 		containers.push(...instances);
 
@@ -216,6 +264,7 @@ export async function createN8NStack(config: N8NConfig = {}): Promise<N8NStack> 
 			environment,
 			network,
 			directPort: assignedPort,
+			resourceQuota,
 		});
 		containers.push(...instances);
 	}
@@ -285,6 +334,10 @@ interface CreateInstancesOptions {
 	environment: Record<string, string>;
 	network?: StartedNetwork;
 	directPort?: number;
+	resourceQuota?: {
+		memory?: number; // in GB
+		cpu?: number; // in cores
+	};
 }
 
 async function createN8NInstances({
@@ -295,10 +348,11 @@ async function createN8NInstances({
 	network,
 	/** The host port to use for the main instance */
 	directPort,
+	resourceQuota,
 }: CreateInstancesOptions): Promise<StartedTestContainer[]> {
 	const instances: StartedTestContainer[] = [];
 
-	// Create main instances
+	// Create main instances sequentially to avoid database migration conflicts
 	for (let i = 1; i <= mainCount; i++) {
 		const name = mainCount > 1 ? `${uniqueProjectName}-n8n-main-${i}` : `${uniqueProjectName}-n8n`;
 		const networkAlias = mainCount > 1 ? name : `${uniqueProjectName}-n8n-main-1`;
@@ -311,6 +365,7 @@ async function createN8NInstances({
 			instanceNumber: i,
 			networkAlias,
 			directPort: i === 1 ? directPort : undefined, // Only first main gets direct port
+			resourceQuota,
 		});
 		instances.push(container);
 	}
@@ -325,6 +380,7 @@ async function createN8NInstances({
 			network,
 			isWorker: true,
 			instanceNumber: i,
+			resourceQuota,
 		});
 		instances.push(container);
 	}
@@ -341,6 +397,10 @@ interface CreateContainerOptions {
 	instanceNumber: number;
 	networkAlias?: string;
 	directPort?: number;
+	resourceQuota?: {
+		memory?: number; // in GB
+		cpu?: number; // in cores
+	};
 }
 
 async function createN8NContainer({
@@ -352,6 +412,7 @@ async function createN8NContainer({
 	instanceNumber,
 	networkAlias,
 	directPort,
+	resourceQuota,
 }: CreateContainerOptions): Promise<StartedTestContainer> {
 	const { consumer, throwWithLogs } = createSilentLogConsumer();
 
@@ -367,8 +428,14 @@ async function createN8NContainer({
 		.withPullPolicy(new N8nImagePullPolicy(N8N_IMAGE))
 		.withName(name)
 		.withLogConsumer(consumer)
-		.withName(name)
 		.withReuse();
+
+	if (resourceQuota) {
+		container = container.withResourcesQuota({
+			memory: resourceQuota.memory,
+			cpu: resourceQuota.cpu,
+		});
+	}
 
 	if (network) {
 		container = container.withNetwork(network);
@@ -378,12 +445,14 @@ async function createN8NContainer({
 	}
 
 	if (isWorker) {
-		container = container.withCommand(['worker']);
+		container = container.withCommand(['worker']).withWaitStrategy(N8N_WORKER_WAIT_STRATEGY);
 	} else {
-		container = container.withExposedPorts(5678).withWaitStrategy(N8N_WAIT_STRATEGY);
+		container = container.withExposedPorts(5678).withWaitStrategy(N8N_MAIN_WAIT_STRATEGY);
 
 		if (directPort) {
-			container = container.withExposedPorts({ container: 5678, host: directPort });
+			container = container
+				.withExposedPorts({ container: 5678, host: directPort })
+				.withWaitStrategy(N8N_MAIN_WAIT_STRATEGY);
 		}
 	}
 

@@ -430,7 +430,13 @@ export function generateNodesGraph(
 		} else if (node.type === CODE_NODE_TYPE) {
 			const { language } = node.parameters;
 			nodeItem.language =
-				language === undefined ? 'javascript' : language === 'python' ? 'python' : 'unknown';
+				language === undefined
+					? 'javascript'
+					: language === 'python'
+						? 'python'
+						: language === 'pythonNative'
+							? 'pythonNative'
+							: 'unknown';
 		} else {
 			try {
 				const nodeType = nodeTypes.getByNameAndVersion(node.type, node.typeVersion);
@@ -458,7 +464,13 @@ export function generateNodesGraph(
 					}
 				}
 			} catch (e: unknown) {
-				if (!(e instanceof Error && e.message.includes('Unrecognized node type'))) {
+				if (
+					!(
+						e instanceof Error &&
+						typeof e.message === 'string' &&
+						e.message.includes('Unrecognized node type')
+					)
+				) {
 					throw e;
 				}
 			}
